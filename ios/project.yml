@@ -1,0 +1,32 @@
+name: PS1Online
+options:
+  bundleIdPrefix: com.cruyfford
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  PS1Online:
+    type: application
+    platform: iOS
+    sources:
+      - path: PS1Online
+    settings:
+      base:
+        PRODUCT_NAME: PS1Online
+        PRODUCT_BUNDLE_IDENTIFIER: com.cruyfford.ps1online
+        INFOPLIST_FILE: PS1Online/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_VERSION: "5.0"
+        SWIFT_OBJC_BRIDGING_HEADER: PS1Online/Bridge/PS1Online-Bridging-Header.h
+        HEADER_SEARCH_PATHS: "$(PROJECT_DIR)/vendor/pcsx_rearmed/deps/libretro-common/include $(PROJECT_DIR)/PS1Online/Bridge"
+        LIBRARY_SEARCH_PATHS: "$(PROJECT_DIR)/vendor/lib"
+        OTHER_LDFLAGS: "-lpcsx -lc++ -lz"
+        GCC_C_LANGUAGE_STANDARD: gnu11
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_BITCODE: NO
+        DEAD_CODE_STRIPPING: YES
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
