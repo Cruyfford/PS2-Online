@@ -1,0 +1,11 @@
+__pycache__/
+client/saves/
+client/covers/
+client/settings.ini
+client/disc_cache.json
+client/cores/*.dll
+client/cores/*.so
+client/system/pcsx2/*
+!client/system/pcsx2/bios/
+client/system/pcsx2/bios/*
+!client/system/pcsx2/bios/README.txt

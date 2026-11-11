@@ -1,0 +1,59 @@
+name: Build PS2 Online
+
+on:
+  push:
+  workflow_dispatch:
+
+# حزمة الكمبيوتر = البرنامج + pcsx2_libretro.dll (نواة LRPS2 من libretro buildbot).
+# كل اللاعبين يجب أن يستخدموا نفس الحزمة: البرنامج يقارن نسخة النواة عند الاتصال.
+env:
+  CORE_URL: https://buildbot.libretro.com/nightly/windows/x86_64/latest/pcsx2_libretro.dll.zip
+
+jobs:
+  pc:
+    name: PC (Windows)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pcsx2_libretro.dll
+        run: |
+          curl -fL --retry 5 --retry-delay 10 -o core.zip "$CORE_URL"
+          unzip -o core.zip pcsx2_libretro.dll
+          ls -la pcsx2_libretro.dll
+          sha256sum pcsx2_libretro.dll | tee core.sha256
+
+      - name: Package
+        run: |
+          mkdir -p dist/PS2-Online-PC
+          cp -r client README.md requirements.txt run.bat dist/PS2-Online-PC/
+          mkdir -p dist/PS2-Online-PC/client/cores dist/PS2-Online-PC/client/system/pcsx2/bios
+          cp pcsx2_libretro.dll dist/PS2-Online-PC/client/cores/
+          (cd dist/PS2-Online-PC && zip -qr ../PS2-Online-PC.zip .)
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS2-Online-PC
+          path: dist/PS2-Online-PC
+
+      - name: Release notes
+        run: |
+          {
+            echo "- **PS2-Online-PC.zip**: البرنامج + pcsx2_libretro.dll (LRPS2)"
+            echo "- يجب أن يستخدم اللاعبان **نفس** هذا الملف (نفس نسخة النواة)."
+            echo ""
+            echo "SHA-256 النواة: \`$(cut -d' ' -f1 core.sha256)\`"
+            echo "Commit: ${GITHUB_SHA}"
+          } > notes.md
+
+      - uses: softprops/action-gh-release@v2
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        with:
+          tag_name: latest
+          name: PS2 Online — آخر نسخة
+          body_path: notes.md
+          make_latest: true
+          files: dist/PS2-Online-PC.zip
