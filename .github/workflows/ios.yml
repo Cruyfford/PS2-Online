@@ -1,0 +1,114 @@
+name: Build PS2 Online iOS
+
+# PS2 Online for iPhone = ARMSX2 (pinned in ios/armsx2.commit) + the netplay layer in ios/.
+on:
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+jobs:
+  ios:
+    name: iOS (arm64, unsigned IPA)
+    runs-on: macos-26
+    timeout-minutes: 300
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch ARMSX2
+        run: |
+          COMMIT=$(cat ios/armsx2.commit)
+          git init -q armsx2 && cd armsx2
+          git remote add origin https://github.com/ARMSX2/ARMSX2.git
+          git fetch -q --depth 1 origin "$COMMIT"
+          git checkout -q FETCH_HEAD
+          git submodule update --init --recursive --depth 1 -j 8
+
+      - name: Apply PS2 Online netplay
+        run: python3 ios/apply.py armsx2
+
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode.app
+
+      - name: Install tools
+        run: |
+          rustup target add aarch64-apple-ios
+          brew install ninja
+
+      - name: Compute the core cache key
+        id: core-key
+        working-directory: armsx2
+        run: |
+          KEY=$({ xcodebuild -version; echo "${ImageOS:-}-${ImageVersion:-}"; cmake --version | head -1; ninja --version; rustc --version; cat ../ios/armsx2.commit; shasum ../ios/apply.py ../ios/overlay/pcsx2/*; } | shasum | cut -c1-40)
+          echo "key=ps2online-ios-core-$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the prebuilt core
+        id: core-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: armsx2/platforms/ios/build/core-device
+          key: ${{ steps.core-key.outputs.key }}
+
+      - name: Age the checkout behind the prebuilt core
+        working-directory: armsx2
+        run: find . -path ./.git -prune -o -path ./platforms/ios/build -prune -o -exec touch -h -t 200001010000 {} +
+
+      - name: Build the core
+        working-directory: armsx2
+        run: platforms/ios/scripts/build-ios-core.sh device
+
+      - name: Save the prebuilt core
+        if: steps.core-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: armsx2/platforms/ios/build/core-device
+          key: ${{ steps.core-key.outputs.key }}
+
+      - name: Configure
+        working-directory: armsx2/platforms/ios
+        run: >
+          cmake -G Xcode -B build/device
+          -DCMAKE_SYSTEM_NAME=iOS
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DARMSX2_REAL_DEVICE=ON
+          -DARMSX2_BUNDLE_IDENTIFIER=com.cruyfford.ps2online
+          "-DARMSX2_DISPLAY_NAME=PS2 Online"
+
+      - name: Build
+        working-directory: armsx2/platforms/ios
+        run: >
+          cmake --build build/device --config Release
+          -- -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+
+      - name: Package IPA
+        working-directory: armsx2/platforms/ios
+        run: |
+          APP_PATH=$(find build/device -name "ARMSX2iOS.app" -type d | head -1)
+          test -n "$APP_PATH"
+          # Both players must run the same build; the session compares this.
+          /usr/libexec/PlistBuddy -c "Add :PS2OnlineBuild string ${GITHUB_SHA::8}" "$APP_PATH/Info.plist" \
+            || /usr/libexec/PlistBuddy -c "Set :PS2OnlineBuild ${GITHUB_SHA::8}" "$APP_PATH/Info.plist"
+          STAGING=$(mktemp -d)
+          mkdir -p "$STAGING/Payload"
+          cp -R "$APP_PATH" "$STAGING/Payload/"
+          (cd "$STAGING" && zip -qr "$GITHUB_WORKSPACE/PS2Online.ipa" Payload -x "*.DS_Store")
+          ls -lh "$GITHUB_WORKSPACE/PS2Online.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PS2Online-iOS-IPA
+          path: PS2Online.ipa
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-latest
+          name: PS2 Online iPhone — آخر نسخة
+          prerelease: true
+          body: |
+            - **PS2Online.ipa**: نسخة الآيفون (غير موقّعة — Sideloadly / AltStore / SideStore)
+            - مبنية على ARMSX2 (`${{ github.sha }}`)، وتحتاج JIT عبر StikDebug.
+            - اللعب أونلاين بين أجهزة الآيفون فقط، ويجب أن يثبّت اللاعبان نفس هذا الملف.
+          files: PS2Online.ipa
