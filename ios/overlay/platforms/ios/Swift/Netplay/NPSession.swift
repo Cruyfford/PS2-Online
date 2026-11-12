@@ -157,8 +157,8 @@ final class NPSession: ObservableObject {
         self.room = room
         self.delay = max(1, min(delay, 15))
         self.crc = crc
-        voiceSink.gain = Float(voiceVolume)
         tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("ps2online", isDirectory: true)
+        voiceSink.gain = Float(voiceVolume)
         try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
     }
 
