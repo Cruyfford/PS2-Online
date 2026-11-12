@@ -84,4 +84,11 @@ edit("platforms/ios/Swift/App/AppState.swift",
      "    }\n\n"
      "    @discardableResult\n    func bootBIOSOnly() -> Bool {\n")
 
+# 8) iOS: voice chat needs the microphone
+edit("platforms/ios/Info.plist.in",
+     "    <key>NSMotionUsageDescription</key>\n",
+     "    <key>NSMicrophoneUsageDescription</key>\n"
+     "    <string>PS2 Online uses the microphone for voice chat with the other player.</string>\n"
+     "    <key>NSMotionUsageDescription</key>\n")
+
 print("PS2 Online netplay applied.")

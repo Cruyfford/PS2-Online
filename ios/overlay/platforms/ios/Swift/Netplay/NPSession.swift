@@ -1,6 +1,7 @@
 // PS2 Online (Cruyfford) — the netplay session: room relay, sync, inputs.
 // SPDX-License-Identifier: GPL-3.0+
 
+import AVFoundation
 import Foundation
 import QuartzCore
 import SwiftUI
@@ -122,7 +123,22 @@ final class NPSession: ObservableObject {
     @Published private(set) var chat: [NPChatLine] = []
     @Published private(set) var progress: Double?
     @Published var waitingHint = ""
+    @Published private(set) var voiceOn = false
+    @Published private(set) var meTalking = false
+    @Published private(set) var peerTalking = false
+    @Published var muted = false {
+        didSet { voiceSink.muted = muted }
+    }
+    @Published var voiceVolume: Double = UserDefaults.standard.object(forKey: "np.voiceVolume") as? Double ?? 1 {
+        didSet {
+            voiceSink.gain = Float(voiceVolume)
+            UserDefaults.standard.set(voiceVolume, forKey: "np.voiceVolume")
+        }
+    }
     private(set) var delay: Int
+    private let voiceSink = NPVoiceSink()
+    private var voice: NPVoiceEngine?
+    private var talkTimer: Timer?
 
     private var sock: NPSocket?
     private var booted = false
@@ -141,6 +157,7 @@ final class NPSession: ObservableObject {
         self.room = room
         self.delay = max(1, min(delay, 15))
         self.crc = crc
+        voiceSink.gain = Float(voiceVolume)
         tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("ps2online", isDirectory: true)
         try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
     }
@@ -174,6 +191,7 @@ final class NPSession: ObservableObject {
     }
 
     func stop() {
+        stopVoice()
         pingTimer?.invalidate()
         pingTimer = nil
         PS2Netplay.setSendInput(nil, sendCheck: nil, stateSaved: nil, stateLoaded: nil)
@@ -197,8 +215,13 @@ final class NPSession: ObservableObject {
                             URLQueryItem(name: "token", value: NPAccount.shared.token)]
         guard let url = comps.url else { fail("رابط السيرفر غير صحيح"); return }
         status = "جارِ الاتصال بالسيرفر..."
+        let sink = voiceSink
         sock = NPSocket(url: url,
                         onData: { [weak self] d in
+                            if d.count > 3, d[d.startIndex] == Msg.voice {
+                                sink.push(d.subdata(in: (d.startIndex + 3)..<d.endIndex))
+                                return
+                            }
                             // Inputs go straight to the core from the socket's queue: the emulator may be
                             // waiting for exactly this frame.
                             if d.count >= 5 + 18, d[d.startIndex] == Msg.input {
@@ -489,6 +512,61 @@ final class NPSession: ObservableObject {
             fail("فشل تحميل حالة اللعبة من المضيف (نسخة مختلفة أو بايوس مختلف؟)")
             PS2Netplay.stop()
         }
+    }
+
+    // MARK: voice
+
+    /// Opens the mic (asks for permission the first time). Off by default.
+    func toggleVoice() {
+        if voiceOn { stopVoice(); return }
+        Task { @MainActor [weak self] in
+            let granted = await AVAudioApplication.requestRecordPermission()
+            guard let self, granted else {
+                self?.addChat(NPChatLine(who: "PS2 Online", text: "اسمح للتطبيق باستخدام الميكروفون من الإعدادات", mine: false, time: Date()))
+                return
+            }
+            self.startVoice()
+        }
+    }
+
+    private func startVoice() {
+        guard voice == nil, let ref = sockRef else { return }
+        let sink = voiceSink
+        let engine = NPVoiceEngine(sink: sink) { @Sendable [weak self] data, talking in
+            if let d = data, let s = ref.socket {
+                var m = Data([Msg.voice])
+                m.npAppendLE(sink.nextSeq())
+                m.append(d)
+                s.send(m)
+            }
+            Task { @MainActor in
+                guard let self, self.meTalking != talking else { return }
+                self.meTalking = talking
+            }
+        }
+        guard engine.start() else {
+            addChat(NPChatLine(who: "PS2 Online", text: "تعذّر تشغيل الميكروفون", mine: false, time: Date()))
+            return
+        }
+        voice = engine
+        voiceOn = true
+        talkTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                let t = CACurrentMediaTime() - self.voiceSink.lastPeer < 0.35
+                if t != self.peerTalking { self.peerTalking = t }
+            }
+        }
+    }
+
+    private func stopVoice() {
+        talkTimer?.invalidate()
+        talkTimer = nil
+        voice?.stop()
+        voice = nil
+        voiceOn = false
+        meTalking = false
+        peerTalking = false
     }
 
     // MARK: checks, ping, chat

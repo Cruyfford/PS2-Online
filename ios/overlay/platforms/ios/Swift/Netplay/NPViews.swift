@@ -467,7 +467,30 @@ struct NetplaySessionOverlay: View {
                 Text("\(Int(r))ms")
             }
             Text("تأخير \(session.delay)")
-            if let p = session.peer { Text("ضد \(p)").lineLimit(1) }
+            if let p = session.peer {
+                Text("ضد \(p)").lineLimit(1)
+                if session.peerTalking {
+                    Image(systemName: "speaker.wave.2.fill").foregroundColor(NPTheme.good)
+                }
+            }
+            Button {
+                if session.voiceOn { session.muted.toggle() } else { session.toggleVoice() }
+            } label: {
+                Image(systemName: !session.voiceOn ? "mic.slash" : (session.muted ? "mic.slash.fill" : "mic.fill"))
+                    .foregroundColor(!session.voiceOn ? .gray : (session.muted ? NPTheme.bad
+                                                                 : (session.meTalking ? NPTheme.good : .white)))
+            }
+            .contextMenu {
+                if session.voiceOn {
+                    Button(session.muted ? "إلغاء الكتم" : "كتم الميكروفون") { session.muted.toggle() }
+                    Button("إيقاف المحادثة الصوتية", role: .destructive) { session.toggleVoice() }
+                } else {
+                    Button("تشغيل المحادثة الصوتية") { session.toggleVoice() }
+                }
+                Button("صوت الخصم: عادي") { session.voiceVolume = 1 }
+                Button("صوت الخصم: عالٍ") { session.voiceVolume = 2 }
+                Button("صوت الخصم: منخفض") { session.voiceVolume = 0.5 }
+            }
             Button {
                 chatOpen.toggle()
                 chatFocused = chatOpen
