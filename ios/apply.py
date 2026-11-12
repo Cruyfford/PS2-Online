@@ -39,17 +39,17 @@ for base, _, files in os.walk(overlay):
         print(f"added {os.path.relpath(dst, ROOT)}")
 
 # 2) Core: build the netplay hook
-edit("pcsx2/CMakeLists.txt", "\tVMManager.cpp\n", "\tVMManager.cpp\n\tNetplay.cpp\n")
-edit("pcsx2/CMakeLists.txt", "\tVMManager.h\n", "\tVMManager.h\n\tNetplay.h\n")
+edit("pcsx2/CMakeLists.txt", "\tVMManager.cpp\n", "\tVMManager.cpp\n\tNetplay.cpp\n\tPS2Mod.cpp\n")
+edit("pcsx2/CMakeLists.txt", "\tVMManager.h\n", "\tVMManager.h\n\tNetplay.h\n\tPS2Mod.h\n")
 
 # 3) Core: the hooks around the frame's pad poll, and the settings netplay pins
-edit("pcsx2/VMManager.cpp", '#include "Achievements.h"\n', '#include "Achievements.h"\n#include "Netplay.h"\n')
+edit("pcsx2/VMManager.cpp", '#include "Achievements.h"\n', '#include "Achievements.h"\n#include "Netplay.h"\n#include "PS2Mod.h"\n')
 edit("pcsx2/VMManager.cpp",
      "\tHost::PumpMessagesOnCPUThread();\n\tInputManager::PollSources();\n",
      "\tNetplay::PreInput();\n\tHost::PumpMessagesOnCPUThread();\n\tInputManager::PollSources();\n")
 edit("pcsx2/VMManager.cpp",
      "\tAutosave::OnPollInput();\n",
-     "\tAutosave::OnPollInput();\n\tNetplay::PostInput();\n")
+     "\tAutosave::OnPollInput();\n\tNetplay::PostInput();\n\tPS2Mod::OnFrame();\n")
 edit("pcsx2/VMManager.cpp",
      "\tif (Arcade::IsActive())\n\t\tApplyArcadeSessionSettings(si);\n}\n",
      "\tif (Arcade::IsActive())\n\t\tApplyArcadeSessionSettings(si);\n\n\tNetplay::ApplyConfigOverrides(EmuConfig);\n}\n")
@@ -65,7 +65,7 @@ edit(inp, "pad->Set(", "PS2NetplayPadSet(pad, ", count=n)
 
 # 5) iOS: Swift sees the bridge
 edit("platforms/ios/Bridge/ARMSX2-Bridging-Header.h", '#import "ARMSX2Bridge.h"\n',
-     '#import "ARMSX2Bridge.h"\n#import "PS2NetplayBridge.h"\n')
+     '#import "ARMSX2Bridge.h"\n#import "PS2NetplayBridge.h"\n#import "PS2ModBridge.h"\n')
 
 # 6) iOS: the online button / in-game netplay HUD over everything
 edit("platforms/ios/Swift/App/RootView.swift",
@@ -90,5 +90,18 @@ edit("platforms/ios/Info.plist.in",
      "    <key>NSMicrophoneUsageDescription</key>\n"
      "    <string>PS2 Online uses the microphone for voice chat with the other player.</string>\n"
      "    <key>NSMotionUsageDescription</key>\n")
+
+# 9) iOS: the modding window's entry in the in-game menu, under "This Game"
+edit("platforms/ios/Swift/Gameplay/QuickMenuView.swift",
+     '            .accessibilityHint(settings.localized("Graphics, audio, CPU, pad, and fixes for this title"))\n        }\n',
+     '            .accessibilityHint(settings.localized("Graphics, audio, CPU, pad, and fixes for this title"))\n'
+     '            OverlayActionRow(\n'
+     '                label: "أدوات التعديل (ذاكرة / بحث / تجميد)",\n'
+     '                systemImage: "wrench.and.screwdriver.fill"\n'
+     '            ) {\n'
+     '                NPModCenter.shared.show()\n'
+     '                onResume()\n'
+     '            }\n'
+     '        }\n')
 
 print("PS2 Online netplay applied.")

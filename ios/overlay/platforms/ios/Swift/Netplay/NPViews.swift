@@ -165,9 +165,13 @@ final class NPCenter: ObservableObject {
 
 struct NetplayRootOverlay: View {
     @ObservedObject private var center = NPCenter.shared
+    @ObservedObject private var mod = NPModCenter.shared
 
     var body: some View {
         ZStack {
+            if mod.visible && AppState.shared.runningGameName != nil {
+                NPModWindow().zIndex(10)
+            }
             if let s = center.session {
                 NetplaySessionOverlay(session: s)
             } else if AppState.shared.runningGameName == nil {
